@@ -16,12 +16,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+      
+      # Enable rust build cache.
+      - uses: Swatinem/rust-cache@v2
+
       - name: Audit dependencies
-        run: cargo audit
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit
+
       - name: Build
-        run: cargo build --verbose
+        run: cargo build
+
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test
+
       - name: Lint with clippy
         run: cargo clippy -- -D warnings
+
+      - name: Formatting check
+        run: cargo fmt -- --check
