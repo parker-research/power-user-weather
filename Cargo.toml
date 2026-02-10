@@ -4,3 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.101"
+chrono = "0.4.43"
+clap = { version = "4.5.57", features = ["derive"] }
+colored = "3.1.1"
+open-meteo-rs = "0.0.5"
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+tabled = "0.20.0"
+tokio = { version = "1.40", features = ["full"] }
+urlencoding = "2.1.3"
