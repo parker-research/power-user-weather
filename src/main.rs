@@ -4,7 +4,7 @@ use clap::Parser;
 use colored::Colorize;
 use log::debug;
 use std::collections::{HashMap, HashSet};
-// use tabled::{Table, Tabled, settings::Style};
+use tabled::{builder::Builder, settings::Style};
 
 mod fetch_data;
 mod geocoding;
@@ -73,7 +73,7 @@ fn aggregate_data(data: &DailyDataColumnarFormat) -> HashMap<MeasureAndModel, f6
     let mut aggregated = HashMap::new();
 
     for (measure_and_model, values) in &data.data_fields {
-        let sum: f64 = values.iter().sum();
+        let sum: f64 = values.iter().filter_map(|v| *v).sum();
         aggregated.insert(
             MeasureAndModel {
                 measure: measure_and_model.measure.clone(),
@@ -111,18 +111,19 @@ fn build_model_measure_table(
         return "No data available".to_string();
     }
 
-    // Build dynamic table structure
-    // We'll create a custom table by building rows as HashMaps
-    #[derive(Clone)]
-    struct DynamicRow {
-        model: String,
-        values: HashMap<String, String>,
+    // Build table using tabled Builder
+    let mut builder = Builder::default();
+
+    // Create header row
+    let mut header = vec!["Model".to_string()];
+    for measure in &measures {
+        header.push(format!("{} ({})", measure, unit));
     }
+    builder.push_record(header);
 
-    let mut rows = Vec::new();
-
+    // Create data rows
     for model in &models {
-        let mut values = HashMap::new();
+        let mut row = vec![model.clone()];
 
         for measure in &measures {
             let key = MeasureAndModel {
@@ -135,88 +136,16 @@ fn build_model_measure_table(
                 .map(|v| format!("{:.1}", v))
                 .unwrap_or_else(|| "N/A".to_string());
 
-            values.insert(measure.clone(), value);
+            row.push(value);
         }
 
-        rows.push(DynamicRow {
-            model: model.clone(),
-            values,
-        });
+        builder.push_record(row);
     }
 
-    // Build table manually with better formatting
-    let mut table_string = String::new();
+    let mut table = builder.build();
+    table.with(Style::modern());
 
-    // Header row
-    let mut header = vec!["Model".to_string()];
-    for measure in &measures {
-        header.push(format!("{} ({})", measure, unit));
-    }
-
-    // Calculate column widths
-    let mut col_widths = vec![header[0].len()];
-    for i in 1..header.len() {
-        col_widths.push(header[i].len());
-    }
-
-    for row in &rows {
-        col_widths[0] = col_widths[0].max(row.model.len());
-        for (i, measure) in measures.iter().enumerate() {
-            let value_len = row.values.get(measure).map(|s| s.len()).unwrap_or(3);
-            col_widths[i + 1] = col_widths[i + 1].max(value_len);
-        }
-    }
-
-    // Add padding
-    for width in &mut col_widths {
-        *width += 2;
-    }
-
-    // Build header
-    let mut header_line = String::new();
-    let mut separator_line = String::new();
-
-    for (i, col) in header.iter().enumerate() {
-        let padded = format!("{:width$}", col, width = col_widths[i]);
-        header_line.push_str(&padded);
-        header_line.push_str(" │ ");
-        separator_line.push_str(&"─".repeat(col_widths[i]));
-        separator_line.push_str("─┼─");
-    }
-
-    // Remove trailing separators
-    header_line.truncate(header_line.len() - 3);
-    separator_line.truncate(separator_line.len() - 3);
-
-    table_string.push_str(&header_line);
-    table_string.push('\n');
-    table_string.push_str(&separator_line);
-    table_string.push('\n');
-
-    // Build data rows
-    for row in &rows {
-        let mut row_line = String::new();
-
-        // Model name
-        let padded_model = format!("{:width$}", row.model, width = col_widths[0]);
-        row_line.push_str(&padded_model);
-        row_line.push_str(" │ ");
-
-        // Measure values
-        for (i, measure) in measures.iter().enumerate() {
-            let value = row.values.get(measure).map(|s| s.as_str()).unwrap_or("N/A");
-            let padded_value = format!("{:>width$}", value, width = col_widths[i + 1]);
-            row_line.push_str(&padded_value);
-            if i < measures.len() - 1 {
-                row_line.push_str(" │ ");
-            }
-        }
-
-        table_string.push_str(&row_line);
-        table_string.push('\n');
-    }
-
-    table_string
+    table.to_string()
 }
 
 #[tokio::main]
@@ -296,7 +225,7 @@ async fn main() -> Result<()> {
                     data,
                 });
             }
-            Err(e) => println!("  ⚠ Historical data error: {}", e),
+            Err(e) => println!("  ⚠ Historical data error: {:#}", e),
         }
     }
 
@@ -328,7 +257,7 @@ async fn main() -> Result<()> {
                     data,
                 });
             }
-            Err(e) => println!("  ⚠ Forecast data error: {}", e),
+            Err(e) => println!("  ⚠ Forecast data error: {:#}", e),
         }
 
         // Ensemble forecast (for confidence intervals)
@@ -350,7 +279,7 @@ async fn main() -> Result<()> {
                         data,
                     });
                 }
-                Err(e) => println!("  ⚠ Ensemble forecast error: {}", e),
+                Err(e) => println!("  ⚠ Ensemble forecast error: {:#}", e),
             }
         }
     }
@@ -391,7 +320,7 @@ async fn main() -> Result<()> {
             println!();
 
             // Group by date
-            let mut date_data: HashMap<String, Vec<(String, String, f64)>> = HashMap::new();
+            let mut date_data: HashMap<String, Vec<(String, String, Option<f64>)>> = HashMap::new();
 
             for (measure_and_model, values) in &result.data.data_fields {
                 for (i, date) in result.data.time.iter().enumerate() {
@@ -415,7 +344,13 @@ async fn main() -> Result<()> {
                 println!("  Date: {}", date.bright_cyan());
                 if let Some(entries) = date_data.get(date) {
                     for (model, measure, value) in entries {
-                        println!("    {} - {}: {:.1} {}", model, measure, value, cli.unit);
+                        println!(
+                            "    {} - {}: {} {}",
+                            model,
+                            measure,
+                            value.map_or("".to_string(), |v| format!("{:.1}", v)),
+                            cli.unit
+                        );
                     }
                 }
                 println!();

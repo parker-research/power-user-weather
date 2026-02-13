@@ -38,7 +38,7 @@ struct DailyDataRawColumnarFormat {
     /// The keys of these rows are distinct for each measure for each model.
     /// For example, `rain_sum_cma_grapes_global`, `rain_sum_ecmwf_ifs025`, etc.
     #[serde(flatten)]
-    data_fields: HashMap<String, Vec<f64>>,
+    data_fields: HashMap<String, Vec<Option<f64>>>,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
@@ -51,7 +51,7 @@ pub struct MeasureAndModel {
 pub struct DailyDataColumnarFormat {
     pub time: Vec<String>,
 
-    pub data_fields: HashMap<MeasureAndModel, Vec<f64>>,
+    pub data_fields: HashMap<MeasureAndModel, Vec<Option<f64>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -294,5 +294,159 @@ mod tests {
 
         assert_eq!(result.measure, "precipitation_hours");
         assert_eq!(result.model, "kma_ldps");
+    }
+
+    #[test]
+    fn parse_response_all_floats() {
+        let response_json = r#"
+{
+    "latitude": 40.710335,
+    "longitude": -73.99308,
+    "generationtime_ms": 1.6531944274902344,
+    "utc_offset_seconds": 0,
+    "timezone": "GMT",
+    "timezone_abbreviation": "GMT",
+    "elevation": 51.0,
+    "daily_units": {
+        "time": "iso8601",
+        "rain_sum_best_match": "mm",
+        "showers_sum_best_match": "mm"
+    },
+    "daily": {
+        "time": [
+            "2026-02-13",
+            "2026-02-14",
+            "2026-02-15",
+            "2026-02-16",
+            "2026-02-17",
+            "2026-02-18",
+            "2026-02-19",
+            "2026-02-20",
+            "2026-02-21"
+        ],
+        "rain_sum_best_match": [
+            0.00,
+            0.50,
+            0.00,
+            0.10,
+            0.00,
+            0.30,
+            0.30,
+            2.60,
+            0.70
+        ],
+        "showers_sum_best_match": [
+            0.00,
+            0.00,
+            0.00,
+            0.00,
+            0.00,
+            0.00,
+            0.00,
+            0.00,
+            0.00
+        ]
+    }
+}
+    "#;
+
+        // Confirm this is valid JSON.
+        let _: serde_json::Value =
+            serde_json::from_str(response_json).expect("Failed to parse JSON");
+
+        let decode = decode_response_to_daily_data_columnar_format(response_json.to_string());
+
+        assert!(decode.is_ok());
+
+        let expected_time = vec![
+            "2026-02-13",
+            "2026-02-14",
+            "2026-02-15",
+            "2026-02-16",
+            "2026-02-17",
+            "2026-02-18",
+            "2026-02-19",
+            "2026-02-20",
+            "2026-02-21",
+        ];
+
+        assert_eq!(decode.unwrap().time, expected_time);
+    }
+
+    #[test]
+    fn parse_response_mixed_nulls_and_floats() {
+        let response_json = r#"
+{
+    "latitude": 40.710335,
+    "longitude": -73.99308,
+    "generationtime_ms": 1.6531944274902344,
+    "utc_offset_seconds": 0,
+    "timezone": "GMT",
+    "timezone_abbreviation": "GMT",
+    "elevation": 51.0,
+    "daily_units": {
+        "time": "iso8601",
+        "rain_sum_best_match": "mm",
+        "showers_sum_best_match": "mm"
+    },
+    "daily": {
+        "time": [
+            "2026-02-13",
+            "2026-02-14",
+            "2026-02-15",
+            "2026-02-16",
+            "2026-02-17",
+            "2026-02-18",
+            "2026-02-19",
+            "2026-02-20",
+            "2026-02-21"
+        ],
+        "rain_sum_best_match": [
+            0.00,
+            0.50,
+            0.00,
+            0.10,
+            0.00,
+            null,
+            null,
+            null,
+            null
+        ],
+        "showers_sum_best_match": [
+            0.00,
+            0.00,
+            0.00,
+            0.00,
+            0.00,
+            0.00,
+            0.00,
+            0.00,
+            null
+        ]
+    }
+}
+    "#;
+
+        // Confirm this is valid JSON.
+        let _: serde_json::Value =
+            serde_json::from_str(response_json).expect("Failed to parse JSON");
+
+        let decode = decode_response_to_daily_data_columnar_format(response_json.to_string());
+
+        assert!(decode.is_ok());
+
+        let expected_time = vec![
+            "2026-02-13",
+            "2026-02-14",
+            "2026-02-15",
+            "2026-02-16",
+            "2026-02-17",
+            "2026-02-18",
+            "2026-02-19",
+            "2026-02-20",
+            "2026-02-21",
+        ];
+
+        assert_eq!(decode.unwrap().time, expected_time);
     }
 }
