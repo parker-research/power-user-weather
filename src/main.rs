@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use chrono::NaiveDate;
 use clap::Parser;
 use colored::Colorize;
+use log::debug;
 use tabled::{Table, Tabled, settings::Style};
 
 mod fetch_data;
@@ -89,6 +90,9 @@ struct DailyRow {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::init();
+    debug!("Starting parsing arguments");
+
     let cli = Cli::parse();
 
     // Parse dates

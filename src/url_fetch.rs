@@ -1,5 +1,6 @@
 use anyhow::Result;
 use directories::ProjectDirs;
+use log::debug;
 use reqwest::Client;
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -16,12 +17,14 @@ const CACHE_TTL: Duration = Duration::from_secs(60 * 60);
 pub async fn fetch_url_cached(url: &str) -> Result<String> {
     let cache_path = cache_file_path(url)?;
 
-    // If cache exists and is fresh, return it
+    // If cache exists and is fresh, return it.
     if let Some(contents) = read_if_fresh(&cache_path)? {
+        debug!("Using cached response for URL: {}", url);
         return Ok(contents);
     }
 
-    // Otherwise fetch from network
+    // Otherwise fetch from network.
+    debug!("Fetching URL from API: {}", url);
     let client = Client::new();
     let response = client.get(url).send().await?;
     let response = response.error_for_status()?;
@@ -81,6 +84,7 @@ fn read_if_fresh(path: &Path) -> Result<Option<String>> {
         let contents = fs::read_to_string(path)?;
         Ok(Some(contents))
     } else {
+        debug!("Cached file exists but expired for file: {:?}", path);
         Ok(None)
     }
 }
