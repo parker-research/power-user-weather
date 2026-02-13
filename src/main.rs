@@ -3,14 +3,15 @@ use chrono::NaiveDate;
 use clap::Parser;
 use colored::Colorize;
 use log::debug;
-use tabled::{Table, Tabled, settings::Style};
+use std::collections::{HashMap, HashSet};
+// use tabled::{Table, Tabled, settings::Style};
 
 mod fetch_data;
 mod geocoding;
 mod models;
 mod url_fetch;
 
-use fetch_data::PrecipitationData;
+use fetch_data::{DailyDataColumnarFormat, MeasureAndModel, WeatherDataSource};
 use geocoding::Location;
 
 #[derive(Parser, Debug)]
@@ -62,30 +63,160 @@ struct Cli {
     verbose: bool,
 }
 
-#[derive(Tabled)]
-struct SummaryRow {
-    #[tabled(rename = "Source")]
-    source: String,
-    #[tabled(rename = "Type")]
-    data_type: String,
-    #[tabled(rename = "Total Precip")]
-    total: String,
-    #[tabled(rename = "Days")]
-    days: usize,
-    #[tabled(rename = "Avg/Day")]
-    avg_per_day: String,
-    #[tabled(rename = "Max Day")]
-    max_day: String,
+struct DataSourceResult {
+    source: WeatherDataSource,
+    data: DailyDataColumnarFormat,
 }
 
-#[derive(Tabled)]
-struct DailyRow {
-    #[tabled(rename = "Date")]
-    date: String,
-    #[tabled(rename = "Source")]
-    source: String,
-    #[tabled(rename = "Precipitation")]
-    precipitation: String,
+/// Aggregate data by summing values across the time period for each measure-model combination
+fn aggregate_data(data: &DailyDataColumnarFormat) -> HashMap<MeasureAndModel, f64> {
+    let mut aggregated = HashMap::new();
+
+    for (measure_and_model, values) in &data.data_fields {
+        let sum: f64 = values.iter().sum();
+        aggregated.insert(
+            MeasureAndModel {
+                measure: measure_and_model.measure.clone(),
+                model: measure_and_model.model.clone(),
+            },
+            sum,
+        );
+    }
+
+    aggregated
+}
+
+/// Build a table showing models as rows and measures as columns
+fn build_model_measure_table(
+    aggregated_data: &HashMap<MeasureAndModel, f64>,
+    unit: &str,
+) -> String {
+    // Collect all unique models and measures
+    let mut models: HashSet<String> = HashSet::new();
+    let mut measures: HashSet<String> = HashSet::new();
+
+    for key in aggregated_data.keys() {
+        models.insert(key.model.clone());
+        measures.insert(key.measure.clone());
+    }
+
+    // Sort for consistent display
+    let mut models: Vec<String> = models.into_iter().collect();
+    models.sort();
+
+    let mut measures: Vec<String> = measures.into_iter().collect();
+    measures.sort();
+
+    if models.is_empty() || measures.is_empty() {
+        return "No data available".to_string();
+    }
+
+    // Build dynamic table structure
+    // We'll create a custom table by building rows as HashMaps
+    #[derive(Clone)]
+    struct DynamicRow {
+        model: String,
+        values: HashMap<String, String>,
+    }
+
+    let mut rows = Vec::new();
+
+    for model in &models {
+        let mut values = HashMap::new();
+
+        for measure in &measures {
+            let key = MeasureAndModel {
+                measure: measure.clone(),
+                model: model.clone(),
+            };
+
+            let value = aggregated_data
+                .get(&key)
+                .map(|v| format!("{:.1}", v))
+                .unwrap_or_else(|| "N/A".to_string());
+
+            values.insert(measure.clone(), value);
+        }
+
+        rows.push(DynamicRow {
+            model: model.clone(),
+            values,
+        });
+    }
+
+    // Build table manually with better formatting
+    let mut table_string = String::new();
+
+    // Header row
+    let mut header = vec!["Model".to_string()];
+    for measure in &measures {
+        header.push(format!("{} ({})", measure, unit));
+    }
+
+    // Calculate column widths
+    let mut col_widths = vec![header[0].len()];
+    for i in 1..header.len() {
+        col_widths.push(header[i].len());
+    }
+
+    for row in &rows {
+        col_widths[0] = col_widths[0].max(row.model.len());
+        for (i, measure) in measures.iter().enumerate() {
+            let value_len = row.values.get(measure).map(|s| s.len()).unwrap_or(3);
+            col_widths[i + 1] = col_widths[i + 1].max(value_len);
+        }
+    }
+
+    // Add padding
+    for width in &mut col_widths {
+        *width += 2;
+    }
+
+    // Build header
+    let mut header_line = String::new();
+    let mut separator_line = String::new();
+
+    for (i, col) in header.iter().enumerate() {
+        let padded = format!("{:width$}", col, width = col_widths[i]);
+        header_line.push_str(&padded);
+        header_line.push_str(" │ ");
+        separator_line.push_str(&"─".repeat(col_widths[i]));
+        separator_line.push_str("─┼─");
+    }
+
+    // Remove trailing separators
+    header_line.truncate(header_line.len() - 3);
+    separator_line.truncate(separator_line.len() - 3);
+
+    table_string.push_str(&header_line);
+    table_string.push('\n');
+    table_string.push_str(&separator_line);
+    table_string.push('\n');
+
+    // Build data rows
+    for row in &rows {
+        let mut row_line = String::new();
+
+        // Model name
+        let padded_model = format!("{:width$}", row.model, width = col_widths[0]);
+        row_line.push_str(&padded_model);
+        row_line.push_str(" │ ");
+
+        // Measure values
+        for (i, measure) in measures.iter().enumerate() {
+            let value = row.values.get(measure).map(|s| s.as_str()).unwrap_or("N/A");
+            let padded_value = format!("{:>width$}", value, width = col_widths[i + 1]);
+            row_line.push_str(&padded_value);
+            if i < measures.len() - 1 {
+                row_line.push_str(" │ ");
+            }
+        }
+
+        table_string.push_str(&row_line);
+        table_string.push('\n');
+    }
+
+    table_string
 }
 
 #[tokio::main]
@@ -104,6 +235,10 @@ async fn main() -> Result<()> {
     if end_date < start_date {
         anyhow::bail!("End date must be after start date");
     }
+
+    // Parse precipitation unit
+    let precipitation_unit = fetch_data::PrecipitationUnit::try_from(cli.unit.as_str())
+        .context("Invalid precipitation unit")?;
 
     // Get location
     let location = if let Some(city) = cli.city {
@@ -133,7 +268,7 @@ async fn main() -> Result<()> {
     let is_mixed = start_date < now && end_date >= now;
 
     // Collect all precipitation data
-    let mut all_data: Vec<PrecipitationData> = Vec::new();
+    let mut all_data: Vec<DataSourceResult> = Vec::new();
 
     // Fetch historical data
     if cli.historical && (is_historical || is_mixed) {
@@ -144,18 +279,22 @@ async fn main() -> Result<()> {
             end_date
         };
 
-        match fetch_data::fetch_historical(
+        match fetch_data::fetch_all_summable_precipitation_data(
+            WeatherDataSource::HistoricalArchive,
             &location,
             start_date,
             hist_end,
-            &cli.unit,
+            precipitation_unit.clone(),
             &cli.timezone,
         )
         .await
         {
             Ok(data) => {
                 println!("  ✓ Historical archive data retrieved");
-                all_data.push(data);
+                all_data.push(DataSourceResult {
+                    source: WeatherDataSource::HistoricalArchive,
+                    data,
+                });
             }
             Err(e) => println!("  ⚠ Historical data error: {}", e),
         }
@@ -172,38 +311,44 @@ async fn main() -> Result<()> {
         };
 
         // Standard forecast
-        match fetch_data::fetch_forecast(
+        match fetch_data::fetch_all_summable_precipitation_data(
+            WeatherDataSource::ForecastStandard,
             &location,
             forecast_start,
             forecast_end,
-            &cli.unit,
+            precipitation_unit.clone(),
             &cli.timezone,
-            false,
         )
         .await
         {
             Ok(data) => {
                 println!("  ✓ Standard forecast data retrieved");
-                all_data.push(data);
+                all_data.push(DataSourceResult {
+                    source: WeatherDataSource::ForecastStandard,
+                    data,
+                });
             }
             Err(e) => println!("  ⚠ Forecast data error: {}", e),
         }
 
         // Ensemble forecast (for confidence intervals)
         if cli.ensemble {
-            match fetch_data::fetch_forecast(
+            match fetch_data::fetch_all_summable_precipitation_data(
+                WeatherDataSource::ForecastEnsemble,
                 &location,
                 forecast_start,
                 forecast_end,
-                &cli.unit,
+                precipitation_unit.clone(),
                 &cli.timezone,
-                true,
             )
             .await
             {
                 Ok(data) => {
                     println!("  ✓ Ensemble forecast data retrieved");
-                    all_data.push(data);
+                    all_data.push(DataSourceResult {
+                        source: WeatherDataSource::ForecastEnsemble,
+                        data,
+                    });
                 }
                 Err(e) => println!("  ⚠ Ensemble forecast error: {}", e),
             }
@@ -215,64 +360,69 @@ async fn main() -> Result<()> {
     }
 
     println!();
-    println!("{}", "═".repeat(80).bright_blue());
-    println!("{}", "PRECIPITATION SUMMARY".bright_blue().bold());
-    println!("{}", "═".repeat(80).bright_blue());
-    println!();
 
-    // Build summary table
-    let mut summary_rows = Vec::new();
-    for data in &all_data {
-        let total: f64 = data.daily_values.values().sum();
-        let avg = if !data.daily_values.is_empty() {
-            total / data.daily_values.len() as f64
-        } else {
-            0.0
-        };
-        let max = data.daily_values.values().cloned().fold(0.0f64, f64::max);
+    // Display results for each data source
+    for result in &all_data {
+        println!("{}", "═".repeat(100).bright_blue());
+        println!(
+            "{}",
+            format!("{} - PRECIPITATION BY MODEL AND MEASURE", result.source)
+                .bright_blue()
+                .bold()
+        );
+        println!("{}", "═".repeat(100).bright_blue());
+        println!();
 
-        summary_rows.push(SummaryRow {
-            source: data.source.to_string(),
-            data_type: data.data_type.clone(),
-            total: format!("{:.1} {}", total, cli.unit),
-            days: data.daily_values.len(),
-            avg_per_day: format!("{:.2} {}", avg, cli.unit),
-            max_day: format!("{:.1} {}", max, cli.unit),
-        });
+        let aggregated = aggregate_data(&result.data);
+        let table = build_model_measure_table(&aggregated, &cli.unit);
+        println!("{}", table);
+        println!();
     }
 
-    let summary_table = Table::new(summary_rows).with(Style::modern()).to_string();
-    println!("{}", summary_table);
-
-    // Detailed daily breakdown if verbose
+    // Optional: Detailed daily breakdown if verbose
     if cli.verbose {
-        println!();
-        println!("{}", "═".repeat(80).bright_blue());
-        println!("{}", "DAILY BREAKDOWN".bright_blue().bold());
-        println!("{}", "═".repeat(80).bright_blue());
+        println!("{}", "═".repeat(100).bright_blue());
+        println!("{}", "DETAILED DAILY BREAKDOWN".bright_blue().bold());
+        println!("{}", "═".repeat(100).bright_blue());
         println!();
 
-        let mut daily_rows = Vec::new();
-        for data in &all_data {
-            let mut dates: Vec<_> = data.daily_values.keys().collect();
+        for result in &all_data {
+            println!("{}", format!("Source: {}", result.source).yellow().bold());
+            println!();
+
+            // Group by date
+            let mut date_data: HashMap<String, Vec<(String, String, f64)>> = HashMap::new();
+
+            for (measure_and_model, values) in &result.data.data_fields {
+                for (i, date) in result.data.time.iter().enumerate() {
+                    if i < values.len() {
+                        date_data
+                            .entry(date.clone())
+                            .or_insert_with(Vec::new)
+                            .push((
+                                measure_and_model.model.clone(),
+                                measure_and_model.measure.clone(),
+                                values[i],
+                            ));
+                    }
+                }
+            }
+
+            let mut dates: Vec<_> = date_data.keys().collect();
             dates.sort();
 
             for date in dates {
-                let precip = data.daily_values[date];
-
-                daily_rows.push(DailyRow {
-                    date: date.to_string(),
-                    source: data.source.to_string(),
-                    precipitation: format!("{:.1} {}", precip, cli.unit),
-                });
+                println!("  Date: {}", date.bright_cyan());
+                if let Some(entries) = date_data.get(date) {
+                    for (model, measure, value) in entries {
+                        println!("    {} - {}: {:.1} {}", model, measure, value, cli.unit);
+                    }
+                }
+                println!();
             }
         }
-
-        let daily_table = Table::new(daily_rows).with(Style::modern()).to_string();
-        println!("{}", daily_table);
     }
 
-    println!();
     println!("{}", "✨ Analysis complete!".green().bold());
 
     Ok(())

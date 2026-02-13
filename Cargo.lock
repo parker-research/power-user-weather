@@ -1275,6 +1275,7 @@ dependencies = [
  "env_logger",
  "hex",
  "log",
+ "once_cell",
  "open-meteo-rs",
  "reqwest 0.12.28",
  "sanitize-filename",

@@ -65,8 +65,13 @@ fn cache_file_path(url: &str) -> Result<PathBuf> {
     hasher.update(url.as_bytes());
     let hash = hex::encode(hasher.finalize());
 
-    let filename = format!("{}_{}.json", sanitized, &hash[..16]);
+    let sanitized_restricted_len = if sanitized.len() > 100 {
+        &sanitized[..100]
+    } else {
+        &sanitized
+    };
 
+    let filename = format!("{}_{}.json", sanitized_restricted_len, &hash[..16]);
     Ok(cache_dir.join(filename))
 }
 

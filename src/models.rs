@@ -1,3 +1,8 @@
+use once_cell::sync::Lazy;
+
+use crate::fetch_data::WeatherDataSource;
+use std::collections::BTreeSet;
+
 const ARCHIVE_MODELS: [&'static str; 8] = [
     "best_match",
     "ecmwf_ifs",
@@ -7,6 +12,13 @@ const ARCHIVE_MODELS: [&'static str; 8] = [
     "era5_land",
     "era5_ensemble",
     "cerra",
+];
+
+const ARCHIVE_DAILY_SUMMABLE_PRECIPITATION_MEASURES: [&'static str; 4] = [
+    "rain_sum",
+    "snowfall_sum",
+    "precipitation_sum",
+    "precipitation_hours",
 ];
 
 const FORECAST_MODELS: [&'static str; 48] = [
@@ -60,6 +72,14 @@ const FORECAST_MODELS: [&'static str; 48] = [
     "kma_seamless",
 ];
 
+const FORECAST_DAILY_SUMMABLE_PRECIPITATION_MEASURES: [&'static str; 5] = [
+    "rain_sum",
+    "showers_sum",
+    "snowfall_sum",
+    "precipitation_sum",
+    "precipitation_hours",
+];
+
 const ENSEMBLE_MODELS: [&'static str; 16] = [
     "icon_seamless_eps",
     "icon_global_eps",
@@ -78,3 +98,48 @@ const ENSEMBLE_MODELS: [&'static str; 16] = [
     "ukmo_global_ensemble_20km",
     "ukmo_uk_ensemble_2km",
 ];
+
+const ENSEMBLE_DAILY_SUMMABLE_PRECIPITATION_MEASURES: [&'static str; 4] = [
+    "rain_sum",
+    "snowfall_sum",
+    "precipitation_sum",
+    "precipitation_hours",
+];
+
+pub static ALL_DISTINCT_MODELS: Lazy<Vec<&'static str>> = Lazy::new(|| {
+    let mut seen = BTreeSet::new();
+
+    for &model in ARCHIVE_MODELS
+        .iter()
+        .chain(FORECAST_MODELS.iter())
+        .chain(ENSEMBLE_MODELS.iter())
+    {
+        seen.insert(model);
+    }
+
+    // Now, sort by length descending. Critical to ensure we match the longest substring.
+    let mut seen: Vec<&'static str> = seen.into_iter().collect();
+    seen.sort_by_key(|s| std::cmp::Reverse(s.len()));
+
+    seen
+});
+
+pub fn models_for_weather_data_source(
+    weather_data_source: WeatherDataSource,
+) -> &'static [&'static str] {
+    match weather_data_source {
+        WeatherDataSource::HistoricalArchive => &ARCHIVE_MODELS,
+        WeatherDataSource::ForecastStandard => &FORECAST_MODELS,
+        WeatherDataSource::ForecastEnsemble => &ENSEMBLE_MODELS,
+    }
+}
+
+pub fn daily_summable_precipitation_measures_for_weather_data_source(
+    weather_data_source: WeatherDataSource,
+) -> &'static [&'static str] {
+    match weather_data_source {
+        WeatherDataSource::HistoricalArchive => &ARCHIVE_DAILY_SUMMABLE_PRECIPITATION_MEASURES,
+        WeatherDataSource::ForecastStandard => &FORECAST_DAILY_SUMMABLE_PRECIPITATION_MEASURES,
+        WeatherDataSource::ForecastEnsemble => &ENSEMBLE_DAILY_SUMMABLE_PRECIPITATION_MEASURES,
+    }
+}
