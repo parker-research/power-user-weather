@@ -37,7 +37,7 @@ pub async fn fetch_url_cached(url: &str) -> Result<String> {
 fn cache_file_path(url: &str) -> Result<PathBuf> {
     let parsed = Url::parse(url)?;
 
-    let proj_dirs = ProjectDirs::from("com", "example", "urlfetch")
+    let proj_dirs = ProjectDirs::from("com", "example", "power-user-weather")
         .ok_or_else(|| anyhow::anyhow!("Could not determine cache directory"))?;
 
     let cache_dir = proj_dirs.cache_dir();
@@ -62,7 +62,7 @@ fn cache_file_path(url: &str) -> Result<PathBuf> {
     hasher.update(url.as_bytes());
     let hash = hex::encode(hasher.finalize());
 
-    let filename = format!("{}_{}.cache", sanitized, &hash[..16]);
+    let filename = format!("{}_{}.json", sanitized, &hash[..16]);
 
     Ok(cache_dir.join(filename))
 }
