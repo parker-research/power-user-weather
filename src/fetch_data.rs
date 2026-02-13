@@ -8,25 +8,25 @@ use crate::geocoding::Location;
 use crate::url_fetch::fetch_url_cached;
 
 #[derive(Debug, Clone, Copy)]
-pub enum PrecipSource {
+pub enum PrecipitationSource {
     HistoricalArchive,
     ForecastStandard,
     ForecastEnsemble,
 }
 
-impl fmt::Display for PrecipSource {
+impl fmt::Display for PrecipitationSource {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            PrecipSource::HistoricalArchive => write!(f, "Historical Archive"),
-            PrecipSource::ForecastStandard => write!(f, "Standard Forecast"),
-            PrecipSource::ForecastEnsemble => write!(f, "Ensemble Forecast"),
+            PrecipitationSource::HistoricalArchive => write!(f, "Historical Archive"),
+            PrecipitationSource::ForecastStandard => write!(f, "Standard Forecast"),
+            PrecipitationSource::ForecastEnsemble => write!(f, "Ensemble Forecast"),
         }
     }
 }
 
 #[derive(Debug)]
-pub struct PrecipData {
-    pub source: PrecipSource,
+pub struct PrecipitationData {
+    pub source: PrecipitationSource,
     pub data_type: String,
     pub daily_values: HashMap<NaiveDate, f64>,
     pub confidence_min: Option<HashMap<NaiveDate, f64>>,
@@ -34,12 +34,8 @@ pub struct PrecipData {
 }
 
 #[derive(Deserialize, Debug)]
-struct HistoricalResponse {
-    daily: Option<DailyData>,
-}
-
-#[derive(Deserialize, Debug)]
-struct ForecastResponse {
+struct DailyDataResponse {
+    // Many other fields here, but we use this struct to extract only the one we want.
     daily: Option<DailyData>,
 }
 
@@ -61,7 +57,7 @@ pub async fn fetch_historical(
     end_date: NaiveDate,
     unit: &str,
     timezone: &str,
-) -> Result<PrecipData> {
+) -> Result<PrecipitationData> {
     let url = format!(
         "https://archive-api.open-meteo.com/v1/archive?\
          latitude={}&longitude={}&\
@@ -76,7 +72,7 @@ pub async fn fetch_historical(
         .await
         .context("Failed to fetch historical data")?;
 
-    let response: HistoricalResponse =
+    let response: DailyDataResponse =
         serde_json::from_str(&response).context("Failed to parse historical response")?;
 
     let daily = response.daily.context("No daily data in response")?;
@@ -95,8 +91,8 @@ pub async fn fetch_historical(
         }
     }
 
-    Ok(PrecipData {
-        source: PrecipSource::HistoricalArchive,
+    Ok(PrecipitationData {
+        source: PrecipitationSource::HistoricalArchive,
         data_type: "Observed".to_string(),
         daily_values,
         confidence_min: None,
@@ -112,7 +108,7 @@ pub async fn fetch_forecast(
     unit: &str,
     timezone: &str,
     ensemble: bool,
-) -> Result<PrecipData> {
+) -> Result<PrecipitationData> {
     let base_url = if ensemble {
         "https://ensemble-api.open-meteo.com/v1/ensemble"
     } else {
@@ -136,7 +132,7 @@ pub async fn fetch_forecast(
     );
 
     let response = fetch_url_cached(&url).await.context("Failed to fetch")?;
-    let response: ForecastResponse =
+    let response: DailyDataResponse =
         serde_json::from_str(&response).context("Failed to parse forecast response")?;
 
     let daily = response.daily.context("No daily data in response")?;
@@ -166,8 +162,8 @@ pub async fn fetch_forecast(
             confidence_max.insert(date, precip_max[i].unwrap_or(0.0));
         }
 
-        Ok(PrecipData {
-            source: PrecipSource::ForecastEnsemble,
+        Ok(PrecipitationData {
+            source: PrecipitationSource::ForecastEnsemble,
             data_type: "Predicted (Ensemble)".to_string(),
             daily_values,
             confidence_min: Some(confidence_min),
@@ -186,8 +182,8 @@ pub async fn fetch_forecast(
             daily_values.insert(date, precip_opt.unwrap_or(0.0));
         }
 
-        Ok(PrecipData {
-            source: PrecipSource::ForecastStandard,
+        Ok(PrecipitationData {
+            source: PrecipitationSource::ForecastStandard,
             data_type: "Predicted".to_string(),
             daily_values,
             confidence_min: None,

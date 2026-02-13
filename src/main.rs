@@ -4,12 +4,13 @@ use clap::Parser;
 use colored::Colorize;
 use tabled::{Table, Tabled, settings::Style};
 
+mod fetch_data;
 mod geocoding;
-mod precipitation;
+mod models;
 mod url_fetch;
 
+use fetch_data::PrecipitationData;
 use geocoding::Location;
-use precipitation::PrecipData;
 
 #[derive(Parser, Debug)]
 #[command(name = "power-user-weather")]
@@ -134,7 +135,7 @@ async fn main() -> Result<()> {
     let is_mixed = start_date < now && end_date >= now;
 
     // Collect all precipitation data
-    let mut all_data: Vec<PrecipData> = Vec::new();
+    let mut all_data: Vec<PrecipitationData> = Vec::new();
 
     // Fetch historical data
     if cli.historical && (is_historical || is_mixed) {
@@ -145,7 +146,7 @@ async fn main() -> Result<()> {
             end_date
         };
 
-        match precipitation::fetch_historical(
+        match fetch_data::fetch_historical(
             &location,
             start_date,
             hist_end,
@@ -173,7 +174,7 @@ async fn main() -> Result<()> {
         };
 
         // Standard forecast
-        match precipitation::fetch_forecast(
+        match fetch_data::fetch_forecast(
             &location,
             forecast_start,
             forecast_end,
@@ -192,7 +193,7 @@ async fn main() -> Result<()> {
 
         // Ensemble forecast (for confidence intervals)
         if cli.ensemble {
-            match precipitation::fetch_forecast(
+            match fetch_data::fetch_forecast(
                 &location,
                 forecast_start,
                 forecast_end,
