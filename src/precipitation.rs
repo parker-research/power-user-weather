@@ -1,10 +1,11 @@
-use anyhow::{Context, Result};
+use anyhow::{Context as _, Result};
 use chrono::NaiveDate;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt;
 
 use crate::geocoding::Location;
+use crate::url_fetch::fetch_url_cached;
 
 #[derive(Debug, Clone, Copy)]
 pub enum PrecipSource {
@@ -71,12 +72,12 @@ pub async fn fetch_historical(
         location.lat, location.lon, start_date, end_date, unit, timezone
     );
 
-    let response: HistoricalResponse = reqwest::get(&url)
+    let response = fetch_url_cached(&url)
         .await
-        .context("Failed to fetch historical data")?
-        .json()
-        .await
-        .context("Failed to parse historical response")?;
+        .context("Failed to fetch historical data")?;
+
+    let response: HistoricalResponse =
+        serde_json::from_str(&response).context("Failed to parse historical response")?;
 
     let daily = response.daily.context("No daily data in response")?;
     let precip_values = daily
@@ -134,12 +135,9 @@ pub async fn fetch_forecast(
         base_url, location.lat, location.lon, start_date, end_date, daily_params, unit, timezone
     );
 
-    let response: ForecastResponse = reqwest::get(&url)
-        .await
-        .context("Failed to fetch forecast data")?
-        .json()
-        .await
-        .context("Failed to parse forecast response")?;
+    let response = fetch_url_cached(&url).await.context("Failed to fetch")?;
+    let response: ForecastResponse =
+        serde_json::from_str(&response).context("Failed to parse forecast response")?;
 
     let daily = response.daily.context("No daily data in response")?;
 

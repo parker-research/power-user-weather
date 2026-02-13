@@ -1,5 +1,7 @@
-use anyhow::{Context, Result};
+use anyhow::{Context as _, Result};
 use serde::Deserialize;
+
+use crate::url_fetch::fetch_url_cached;
 
 #[derive(Debug, Clone)]
 pub struct Location {
@@ -28,12 +30,13 @@ pub async fn geocode_city(city: &str) -> Result<Location> {
         urlencoding::encode(city)
     );
 
-    let response: GeocodingResult = reqwest::get(&url)
+    let body = fetch_url_cached(&url)
         .await
-        .context("Failed to fetch geocoding data")?
-        .json()
-        .await
-        .context("Failed to parse geocoding response")?;
+        .context("Failed to fetch geocoding data")?;
+
+    // Deserialize manually from the returned string.
+    let response: GeocodingResult =
+        serde_json::from_str(&body).context("Failed to parse geocoding response")?;
 
     let location = response
         .results

@@ -6,6 +6,7 @@ use tabled::{Table, Tabled, settings::Style};
 
 mod geocoding;
 mod precipitation;
+mod url_fetch;
 
 use geocoding::Location;
 use precipitation::PrecipData;
