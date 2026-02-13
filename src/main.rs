@@ -75,8 +75,6 @@ struct SummaryRow {
     avg_per_day: String,
     #[tabled(rename = "Max Day")]
     max_day: String,
-    #[tabled(rename = "Confidence")]
-    confidence: String,
 }
 
 #[derive(Tabled)]
@@ -87,10 +85,6 @@ struct DailyRow {
     source: String,
     #[tabled(rename = "Precipitation")]
     precipitation: String,
-    #[tabled(rename = "Min")]
-    min: String,
-    #[tabled(rename = "Max")]
-    max: String,
 }
 
 #[tokio::main]
@@ -233,16 +227,6 @@ async fn main() -> Result<()> {
         };
         let max = data.daily_values.values().cloned().fold(0.0f64, f64::max);
 
-        let confidence = if let (Some(min_vals), Some(max_vals)) =
-            (&data.confidence_min, &data.confidence_max)
-        {
-            let total_min: f64 = min_vals.values().sum();
-            let total_max: f64 = max_vals.values().sum();
-            format!("{:.1}-{:.1} {}", total_min, total_max, cli.unit)
-        } else {
-            "N/A".to_string()
-        };
-
         summary_rows.push(SummaryRow {
             source: data.source.to_string(),
             data_type: data.data_type.clone(),
@@ -250,7 +234,6 @@ async fn main() -> Result<()> {
             days: data.daily_values.len(),
             avg_per_day: format!("{:.2} {}", avg, cli.unit),
             max_day: format!("{:.1} {}", max, cli.unit),
-            confidence,
         });
     }
 
@@ -272,25 +255,11 @@ async fn main() -> Result<()> {
 
             for date in dates {
                 let precip = data.daily_values[date];
-                let min = data
-                    .confidence_min
-                    .as_ref()
-                    .and_then(|m| m.get(date))
-                    .map(|v| format!("{:.1}", v))
-                    .unwrap_or_else(|| "-".to_string());
-                let max = data
-                    .confidence_max
-                    .as_ref()
-                    .and_then(|m| m.get(date))
-                    .map(|v| format!("{:.1}", v))
-                    .unwrap_or_else(|| "-".to_string());
 
                 daily_rows.push(DailyRow {
                     date: date.to_string(),
                     source: data.source.to_string(),
                     precipitation: format!("{:.1} {}", precip, cli.unit),
-                    min,
-                    max,
                 });
             }
         }

@@ -29,8 +29,6 @@ pub struct PrecipitationData {
     pub source: PrecipitationSource,
     pub data_type: String,
     pub daily_values: HashMap<NaiveDate, f64>,
-    pub confidence_min: Option<HashMap<NaiveDate, f64>>,
-    pub confidence_max: Option<HashMap<NaiveDate, f64>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -95,8 +93,6 @@ pub async fn fetch_historical(
         source: PrecipitationSource::HistoricalArchive,
         data_type: "Observed".to_string(),
         daily_values,
-        confidence_min: None,
-        confidence_max: None,
     })
 }
 
@@ -166,8 +162,6 @@ pub async fn fetch_forecast(
             source: PrecipitationSource::ForecastEnsemble,
             data_type: "Predicted (Ensemble)".to_string(),
             daily_values,
-            confidence_min: Some(confidence_min),
-            confidence_max: Some(confidence_max),
         })
     } else {
         // Process standard forecast data
@@ -186,8 +180,6 @@ pub async fn fetch_forecast(
             source: PrecipitationSource::ForecastStandard,
             data_type: "Predicted".to_string(),
             daily_values,
-            confidence_min: None,
-            confidence_max: None,
         })
     }
 }
