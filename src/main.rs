@@ -3,8 +3,8 @@ use chrono::NaiveDate;
 use clap::Parser;
 use colored::Colorize;
 use log::debug;
-use std::collections::{HashMap, HashSet};
-use tabled::{builder::Builder, settings::Style};
+use polars::prelude::*;
+use std::collections::HashMap;
 
 mod fetch_data;
 mod geocoding;
@@ -86,66 +86,57 @@ fn aggregate_data(data: &DailyDataColumnarFormat) -> HashMap<MeasureAndModel, f6
     aggregated
 }
 
-/// Build a table showing models as rows and measures as columns
-fn build_model_measure_table(
-    aggregated_data: &HashMap<MeasureAndModel, f64>,
-    unit: &str,
-) -> String {
-    // Collect all unique models and measures
-    let mut models: HashSet<String> = HashSet::new();
-    let mut measures: HashSet<String> = HashSet::new();
-
-    for key in aggregated_data.keys() {
-        models.insert(key.model.clone());
-        measures.insert(key.measure.clone());
-    }
-
-    // Sort for consistent display
-    let mut models: Vec<String> = models.into_iter().collect();
-    models.sort();
-
-    let mut measures: Vec<String> = measures.into_iter().collect();
+/// Build a table showing measures as columns only, with each model as a separate row using polars
+fn build_model_measure_table(aggregated_data: &HashMap<MeasureAndModel, f64>) -> Result<String> {
+    // Collect all unique measures.
+    let mut measures: Vec<String> = aggregated_data
+        .keys()
+        .map(|k| k.measure.clone())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
     measures.sort();
 
-    if models.is_empty() || measures.is_empty() {
-        return "No data available".to_string();
+    if measures.is_empty() {
+        return Ok("No data available".to_string());
     }
 
-    // Build table using tabled Builder
-    let mut builder = Builder::default();
+    // Group by model
+    let mut models_map: HashMap<String, HashMap<String, f64>> = HashMap::new();
+    for (key, value) in aggregated_data {
+        models_map
+            .entry(key.model.clone())
+            .or_insert_with(HashMap::new)
+            .insert(key.measure.clone(), *value);
+    }
 
-    // Create header row
-    let mut header = vec!["Model".to_string()];
+    // Sort models for consistent display
+    let mut models: Vec<String> = models_map.keys().cloned().collect();
+    models.sort();
+
+    // Build columns for DataFrame
+    let mut columns: Vec<Column> = Vec::new();
+
     for measure in &measures {
-        header.push(format!("{} ({})", measure, unit));
-    }
-    builder.push_record(header);
+        let values: Vec<f64> = models
+            .iter()
+            .map(|model| {
+                models_map
+                    .get(model)
+                    .and_then(|m| m.get(measure))
+                    .copied()
+                    .unwrap_or(f64::NAN)
+            })
+            .collect();
 
-    // Create data rows
-    for model in &models {
-        let mut row = vec![model.clone()];
-
-        for measure in &measures {
-            let key = MeasureAndModel {
-                measure: measure.clone(),
-                model: model.clone(),
-            };
-
-            let value = aggregated_data
-                .get(&key)
-                .map(|v| format!("{:.1}", v))
-                .unwrap_or_else(|| "N/A".to_string());
-
-            row.push(value);
-        }
-
-        builder.push_record(row);
+        columns.push(Column::new(measure.into(), values));
     }
 
-    let mut table = builder.build();
-    table.with(Style::modern());
+    // Create DataFrame.
+    let df = DataFrame::new_infer_height(columns).context("Failed to create DataFrame")?;
 
-    table.to_string()
+    // Format the output
+    Ok(format!("{}", df))
 }
 
 #[tokio::main]
@@ -303,7 +294,7 @@ async fn main() -> Result<()> {
         println!();
 
         let aggregated = aggregate_data(&result.data);
-        let table = build_model_measure_table(&aggregated, &cli.unit);
+        let table = build_model_measure_table(&aggregated)?;
         println!("{}", table);
         println!();
     }

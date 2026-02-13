@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.101"
-chrono = "0.4.43"
+chrono = "0.4.41"
 clap = { version = "4.5.57", features = ["derive"] }
 colored = "3.1.1"
 directories = "6.0.0"
@@ -13,7 +13,7 @@ env_logger = "0.11.9"
 hex = "0.4.3"
 log = "0.4.29"
 once_cell = "1.21.3"
-open-meteo-rs = "0.0.5"
+polars = "0.53.0"
 reqwest = { version = "0.12", features = ["json"] }
 sanitize-filename = "0.6.0"
 serde = { version = "1.0", features = ["derive"] }
