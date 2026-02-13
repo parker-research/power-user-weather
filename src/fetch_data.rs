@@ -160,7 +160,7 @@ pub async fn fetch_weather_data(
         start_date,
         end_date,
         daily_measures.join(","),
-        precipitation_unit.to_string(),
+        precipitation_unit,
         timezone,
         models.join(",")
     );

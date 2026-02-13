@@ -13,7 +13,16 @@ env_logger = "0.11.9"
 hex = "0.4.3"
 log = "0.4.29"
 once_cell = "1.21.3"
-polars = "0.53.0"
+polars = { version = "0.53.0", features = [
+    "lazy",
+    "temporal",
+    "describe",
+    "parquet",
+    "dtype-datetime",
+    "rows",
+    "pivot",
+    "fmt",
+] }
 reqwest = { version = "0.12", features = ["json"] }
 sanitize-filename = "0.6.0"
 serde = { version = "1.0", features = ["derive"] }

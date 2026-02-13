@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 use crate::fetch_data::WeatherDataSource;
 use std::collections::BTreeSet;
 
-const ARCHIVE_MODELS: [&'static str; 8] = [
+const ARCHIVE_MODELS: [&str; 8] = [
     "best_match",
     "ecmwf_ifs",
     "ecmwf_ifs_analysis_long_window",
@@ -14,14 +14,14 @@ const ARCHIVE_MODELS: [&'static str; 8] = [
     "cerra",
 ];
 
-const ARCHIVE_DAILY_SUMMABLE_PRECIPITATION_MEASURES: [&'static str; 4] = [
+const ARCHIVE_DAILY_SUMMABLE_PRECIPITATION_MEASURES: [&str; 4] = [
     "rain_sum",
     "snowfall_sum",
     "precipitation_sum",
     "precipitation_hours",
 ];
 
-const FORECAST_MODELS: [&'static str; 48] = [
+const FORECAST_MODELS: [&str; 48] = [
     "best_match",
     "ecmwf_ifs",
     "ecmwf_ifs025",
@@ -72,7 +72,7 @@ const FORECAST_MODELS: [&'static str; 48] = [
     "kma_seamless",
 ];
 
-const FORECAST_DAILY_SUMMABLE_PRECIPITATION_MEASURES: [&'static str; 5] = [
+const FORECAST_DAILY_SUMMABLE_PRECIPITATION_MEASURES: [&str; 5] = [
     "rain_sum",
     "showers_sum",
     "snowfall_sum",
@@ -80,7 +80,7 @@ const FORECAST_DAILY_SUMMABLE_PRECIPITATION_MEASURES: [&'static str; 5] = [
     "precipitation_hours",
 ];
 
-const ENSEMBLE_MODELS: [&'static str; 16] = [
+const ENSEMBLE_MODELS: [&str; 16] = [
     "icon_seamless_eps",
     "icon_global_eps",
     "icon_eu_eps",
@@ -99,7 +99,7 @@ const ENSEMBLE_MODELS: [&'static str; 16] = [
     "ukmo_uk_ensemble_2km",
 ];
 
-const ENSEMBLE_DAILY_SUMMABLE_PRECIPITATION_MEASURES: [&'static str; 4] = [
+const ENSEMBLE_DAILY_SUMMABLE_PRECIPITATION_MEASURES: [&str; 4] = [
     "rain_sum",
     "snowfall_sum",
     "precipitation_sum",

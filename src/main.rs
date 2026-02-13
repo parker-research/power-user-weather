@@ -4,7 +4,7 @@ use clap::Parser;
 use colored::Colorize;
 use log::debug;
 use polars::prelude::*;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 mod fetch_data;
 mod geocoding;
@@ -88,52 +88,45 @@ fn aggregate_data(data: &DailyDataColumnarFormat) -> HashMap<MeasureAndModel, f6
 
 /// Build a table showing measures as columns only, with each model as a separate row using polars
 fn build_model_measure_table(aggregated_data: &HashMap<MeasureAndModel, f64>) -> Result<String> {
-    // Collect all unique measures.
-    let mut measures: Vec<String> = aggregated_data
+    // Create DataFrame.
+    let df = df!(
+        "Measure" => aggregated_data.keys().map(|k| k.measure.clone()).collect::<Vec<_>>(),
+        "Model" => aggregated_data.keys().map(|k| k.model.clone()).collect::<Vec<_>>(),
+        "Value" => aggregated_data.values().copied().collect::<Vec<_>>()
+    )?;
+
+    // De-duplicate then sort:
+    let measure_values: Vec<_> = aggregated_data
         .keys()
         .map(|k| k.measure.clone())
-        .collect::<std::collections::HashSet<_>>()
+        .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
-    measures.sort();
 
-    if measures.is_empty() {
-        return Ok("No data available".to_string());
-    }
-
-    // Group by model
-    let mut models_map: HashMap<String, HashMap<String, f64>> = HashMap::new();
-    for (key, value) in aggregated_data {
-        models_map
-            .entry(key.model.clone())
-            .or_insert_with(HashMap::new)
-            .insert(key.measure.clone(), *value);
-    }
-
-    // Sort models for consistent display
-    let mut models: Vec<String> = models_map.keys().cloned().collect();
-    models.sort();
-
-    // Build columns for DataFrame
-    let mut columns: Vec<Column> = Vec::new();
-
-    for measure in &measures {
-        let values: Vec<f64> = models
-            .iter()
-            .map(|model| {
-                models_map
-                    .get(model)
-                    .and_then(|m| m.get(measure))
-                    .copied()
-                    .unwrap_or(f64::NAN)
-            })
-            .collect();
-
-        columns.push(Column::new(measure.into(), values));
-    }
-
-    // Create DataFrame.
-    let df = DataFrame::new_infer_height(columns).context("Failed to create DataFrame")?;
+    let df = df
+        .lazy()
+        .pivot(
+            Selector::ByName {
+                names: [PlSmallStr::from("Measure")].into(),
+                strict: true,
+            },
+            Arc::new(df!("" => &measure_values)?),
+            Selector::ByName {
+                names: [PlSmallStr::from("Model")].into(),
+                strict: true,
+            },
+            Selector::ByName {
+                names: [PlSmallStr::from("Value")].into(),
+                strict: true,
+            },
+            Expr::Agg(AggExpr::Item {
+                input: Arc::new(Expr::Element),
+                allow_empty: true,
+            }),
+            true,
+            "|".into(),
+        )
+        .collect()?;
 
     // Format the output
     Ok(format!("{}", df))
@@ -316,14 +309,11 @@ async fn main() -> Result<()> {
             for (measure_and_model, values) in &result.data.data_fields {
                 for (i, date) in result.data.time.iter().enumerate() {
                     if i < values.len() {
-                        date_data
-                            .entry(date.clone())
-                            .or_insert_with(Vec::new)
-                            .push((
-                                measure_and_model.model.clone(),
-                                measure_and_model.measure.clone(),
-                                values[i],
-                            ));
+                        date_data.entry(date.clone()).or_default().push((
+                            measure_and_model.model.clone(),
+                            measure_and_model.measure.clone(),
+                            values[i],
+                        ));
                     }
                 }
             }
